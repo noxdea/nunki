@@ -28,8 +28,8 @@ module Nunki
         @max_response_bytes = Protocol.uint(max_response_bytes, "max_response_bytes", positive: true)
         @state_lock = Mutex.new
         @state_changed = ConditionVariable.new
-        @cancelled = false
-        @active = nil
+        @cancel_epoch = 0
+        @active = []
       end
 
       def post_json(payload, headers: {}, &event_handler)
@@ -42,26 +42,31 @@ module Nunki
       def delete(headers: {}) = request(Net::HTTP::Delete, nil, headers)
 
       def cancel
-        http = @state_lock.synchronize do
-          @cancelled = true
+        connections = @state_lock.synchronize do
+          @cancel_epoch += 1
           @state_changed.broadcast
-          @active
+          @active.dup
         end
-        http.finish if http&.active?
-      rescue IOError, SystemCallError
+        connections.each do |http|
+          http.finish if http.active?
+        rescue IOError, SystemCallError
+          nil
+        end
         nil
       end
 
       private
 
       def request(request_class, body, headers)
-        reset_cancel
+        epoch = @state_lock.synchronize { @cancel_epoch }
         attempts = 0
         loop do
-          response = perform(request_class, body, validate_headers(headers)) { |event| yield event if block_given? }
+          response = perform(request_class, body, validate_headers(headers), epoch) do |event, response_headers|
+            yield event, response_headers if block_given?
+          end
           if RETRY_STATUSES.include?(response.status) && attempts < @retries
             attempts += 1
-            wait_retry(@retry_base * (2**(attempts - 1)))
+            wait_retry(@retry_base * (2**(attempts - 1)), epoch)
             next
           end
 
@@ -69,25 +74,23 @@ module Nunki
           return response
         end
       rescue ::Timeout::Error => error
-        raise Cancelled, "request cancelled" if cancelled?
+        raise Cancelled, "request cancelled" if cancelled?(epoch)
         raise Timeout, error.message
       rescue IOError, EOFError, SocketError, SystemCallError => error
-        raise Cancelled, "request cancelled" if cancelled?
+        raise Cancelled, "request cancelled" if cancelled?(epoch)
         raise Error, error.message
-      ensure
-        @state_lock.synchronize { @active = nil }
       end
 
-      def perform(request_class, body, extra_headers)
-        raise Cancelled, "request cancelled" if cancelled?
+      def perform(request_class, body, extra_headers, epoch)
+        raise Cancelled, "request cancelled" if cancelled?(epoch)
 
         http = Net::HTTP.new(@endpoint.host, @endpoint.port)
         http.use_ssl = @endpoint.scheme == "https"
         http.open_timeout = @open_timeout
         http.read_timeout = @read_timeout
         @state_lock.synchronize do
-          raise Cancelled, "request cancelled" if @cancelled
-          @active = http
+          raise Cancelled, "request cancelled" unless @cancel_epoch == epoch
+          @active << http
         end
 
         request = request_class.new(request_target)
@@ -99,14 +102,19 @@ module Nunki
 
         result = nil
         http.start do
+          raise Cancelled, "request cancelled" if cancelled?(epoch)
           http.request(request) do |response|
-            result = read_response(response) { |event| yield event if block_given? }
+            result = read_response(response, epoch) do |event, response_headers|
+              yield event, response_headers if block_given?
+            end
           end
         end
         result
+      ensure
+        @state_lock.synchronize { @active.delete(http) } if http
       end
 
-      def read_response(response)
+      def read_response(response, epoch)
         headers = response.each_header.to_h.freeze
         parser = SSE::Parser.new(max_event_bytes: @max_response_bytes) if sse?(headers)
         bytes = 0
@@ -114,13 +122,13 @@ module Nunki
         events = []
 
         response.read_body do |chunk|
-          raise Cancelled, "request cancelled" if cancelled?
+          raise Cancelled, "request cancelled" if cancelled?(epoch)
           bytes += chunk.bytesize
           raise ProtocolError, "response exceeds #{@max_response_bytes} bytes" if bytes > @max_response_bytes
           if parser
             parser.feed(chunk).each do |event|
               events << event
-              yield event if block_given? && response.is_a?(Net::HTTPSuccess)
+              yield event, headers if block_given? && response.is_a?(Net::HTTPSuccess)
             end
           else
             body << chunk
@@ -128,7 +136,7 @@ module Nunki
         end
         parser&.finish&.each do |event|
           events << event
-          yield event if block_given? && response.is_a?(Net::HTTPSuccess)
+          yield event, headers if block_given? && response.is_a?(Net::HTTPSuccess)
         end
         Result.new(status: response.code.to_i, headers: headers, body: body.freeze, events: events.freeze)
       end
@@ -139,15 +147,14 @@ module Nunki
         raise HTTPError.new(result.status, result.body)
       end
 
-      def wait_retry(seconds)
+      def wait_retry(seconds, epoch)
         @state_lock.synchronize do
-          @state_changed.wait(@state_lock, seconds) unless @cancelled || seconds.zero?
-          raise Cancelled, "request cancelled" if @cancelled
+          @state_changed.wait(@state_lock, seconds) if @cancel_epoch == epoch && !seconds.zero?
+          raise Cancelled, "request cancelled" unless @cancel_epoch == epoch
         end
       end
 
-      def reset_cancel = @state_lock.synchronize { @cancelled = false }
-      def cancelled? = @state_lock.synchronize { @cancelled }
+      def cancelled?(epoch) = @state_lock.synchronize { @cancel_epoch != epoch }
 
       def sse?(headers)
         headers.fetch("content-type", "").downcase.start_with?("text/event-stream")

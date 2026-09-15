@@ -39,6 +39,7 @@ module Nunki
         @dispatch = dispatch
         @sequence = 0
         @request_lock = Mutex.new
+        @state_lock = Mutex.new
         @state = :created
         @capabilities = {}.freeze
         @server_info = {}.freeze
@@ -46,17 +47,25 @@ module Nunki
 
       def start
         @dispatch.call do
-          raise Error, "MCP client has already started" unless @state == :created
-          result = request_now("initialize", {
-            protocolVersion: PROTOCOL_VERSION,
-            capabilities: {},
-            clientInfo: {name: "nunki", version: VERSION}
-          }, initializing: true)
-          validate_initialization(result)
-          @transport.protocol_version = PROTOCOL_VERSION
-          @transport.notify(notification("notifications/initialized"))
-          @state = :started
-          result
+          begin_start
+          begin
+            result = request_now("initialize", {
+              protocolVersion: PROTOCOL_VERSION,
+              capabilities: {},
+              clientInfo: {name: "nunki", version: VERSION}
+            }, initializing: true)
+            validate_initialization(result)
+            @transport.protocol_version = PROTOCOL_VERSION
+            @transport.notify(notification("notifications/initialized"))
+            @state_lock.synchronize do
+              raise Error, "MCP client was closed during initialization" unless @state == :starting
+              @state = :started
+            end
+            result
+          rescue StandardError
+            close_after_failed_start
+            raise
+          end
         end
       end
 
@@ -92,9 +101,17 @@ module Nunki
 
       def close
         @dispatch.call do
-          next nil if @state == :closed
-          @transport.close
-          @state = :closed
+          should_close = @state_lock.synchronize do
+            next false if %i[closing closed].include?(@state)
+            @state = :closing
+            true
+          end
+          next nil unless should_close
+          begin
+            @transport.close
+          ensure
+            @state_lock.synchronize { @state = :closed }
+          end
           nil
         end
       end
@@ -103,9 +120,26 @@ module Nunki
 
       def schedule(&block)
         @dispatch.call do
-          raise Error, "MCP client is not started" unless @state == :started
+          raise Error, "MCP client is not started" unless @state_lock.synchronize { @state == :started }
           block.call
         end
+      end
+
+      def begin_start
+        @state_lock.synchronize do
+          raise Error, "MCP client has already started" unless @state == :created
+          @state = :starting
+        end
+      end
+
+      def close_after_failed_start
+        @transport.close
+      rescue StandardError
+        nil
+      ensure
+        @capabilities = {}.freeze
+        @server_info = {}.freeze
+        @state_lock.synchronize { @state = :closed }
       end
 
       def request_now(method, params, initializing: false)
@@ -120,7 +154,13 @@ module Nunki
           Protocol.deep_freeze(Protocol.object(response["result"], "JSON-RPC result").dup)
         end
       rescue Timeout
-        @transport.notify(notification("notifications/cancelled", requestId: request_id, reason: "request timed out")) unless initializing
+        unless initializing
+          begin
+            @transport.notify(notification("notifications/cancelled", requestId: request_id, reason: "request timed out"))
+          rescue StandardError
+            nil
+          end
+        end
         raise
       end
 

@@ -4,6 +4,31 @@ require "test_helper"
 require "rbconfig"
 
 class MCPTest < Minitest::Test
+  class FailingInitializeTransport
+    attr_reader :closed, :requests
+
+    def initialize
+      @closed = false
+      @requests = 0
+    end
+
+    def request(_message, timeout:)
+      raise "missing timeout" unless timeout.positive?
+      @requests += 1
+      {
+        "jsonrpc" => "2.0", "id" => 1,
+        "result" => {
+          "protocolVersion" => Nunki::MCP::PROTOCOL_VERSION,
+          "capabilities" => {}, "serverInfo" => {"name" => "fake", "version" => "1"}
+        }
+      }
+    end
+
+    def protocol_version=(_version); end
+    def notify(_message) = raise(Nunki::Error, "notification failed")
+    def close = @closed = true
+  end
+
   def test_stdio_tools_resources_and_prompts
     command = [RbConfig.ruby, File.expand_path("support/fake_mcp_server.rb", __dir__)]
     client = Nunki::MCP::Client.stdio(command: command, timeout: 2)
@@ -27,13 +52,15 @@ class MCPTest < Minitest::Test
       seen << request
       return ["204 No Content", {}, ""] if request[:method] == "DELETE"
       return ["202 Accepted", {}, ""] unless message["id"]
+      return ["202 Accepted", {}, ""] unless message["method"]
 
       result = mcp_result(message)
       headers = {"Content-Type" => "application/json"}
       headers["MCP-Session-Id"] = "session-1" if message["method"] == "initialize"
       response = {jsonrpc: "2.0", id: message["id"], result: result}
       if message["method"] == "tools/list"
-        ["200 OK", {"Content-Type" => "text/event-stream"}, sse(response)]
+        ping = {jsonrpc: "2.0", id: "server-ping", method: "ping"}
+        ["200 OK", {"Content-Type" => "text/event-stream"}, sse(ping, response)]
       else
         ["200 OK", headers, JSON.generate(response)]
       end
@@ -55,6 +82,7 @@ class MCPTest < Minitest::Test
       initialized = requests.find { |request| JSON.parse(request[:body]).fetch("method", nil) == "notifications/initialized" }
       assert_equal "session-1", initialized[:headers]["mcp-session-id"]
       assert_equal Nunki::MCP::PROTOCOL_VERSION, initialized[:headers]["mcp-protocol-version"]
+      assert requests.any? { |request| !request[:body].empty? && JSON.parse(request[:body])["id"] == "server-ping" }
       assert requests.any? { |request| request[:method] == "DELETE" }
     ensure
       client&.close
@@ -68,6 +96,16 @@ class MCPTest < Minitest::Test
     assert_raises(Nunki::Error) { client.tools }
   ensure
     client&.close
+  end
+
+  def test_failed_initialization_closes_transport
+    transport = FailingInitializeTransport.new
+    client = Nunki::MCP::Client.new(transport, timeout: 1, dispatch: ->(&work) { work.call })
+
+    assert_raises(Nunki::Error) { client.start }
+    assert transport.closed
+    assert_raises(Nunki::Error) { client.start }
+    assert_equal 1, transport.requests
   end
 
   def test_stdio_request_timeout_and_cleanup

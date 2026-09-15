@@ -36,8 +36,6 @@ module Nunki
           ensure_open
           write(message)
           nil
-        rescue Error, IOError, SystemCallError
-          nil
         end
 
         def close
@@ -144,11 +142,14 @@ module Nunki
         end
 
         def request(message, timeout:)
-          response = @client.post_json(message, headers: request_headers)
+          matched = nil
+          response = @client.post_json(message, headers: request_headers) do |event, response_headers|
+            @session_id ||= response_headers["mcp-session-id"]
+            matched ||= receive(parse_message(event.data), message["id"])
+          end
           @session_id ||= response.headers["mcp-session-id"]
-          messages = response.events.filter_map { |event| parse_message(event.data) }
-          messages << parse_message(response.body) unless response.body.empty?
-          messages.compact.find { |item| item["id"] == message["id"] } ||
+          matched ||= receive(parse_message(response.body), message["id"]) unless response.body.empty?
+          matched ||
             raise(ProtocolError, "MCP HTTP response did not contain the request id")
         rescue Nunki::Timeout
           raise
@@ -160,11 +161,13 @@ module Nunki
         end
 
         def close
-          @client.delete(headers: request_headers) if @session_id
-          @client.cancel
-          nil
-        rescue HTTPError => error
-          raise unless error.status == 405
+          begin
+            @client.delete(headers: request_headers) if @session_id
+          rescue HTTPError => error
+            raise unless error.status == 405
+          ensure
+            @client.cancel
+          end
           nil
         end
 
@@ -180,6 +183,25 @@ module Nunki
         def parse_message(source)
           return nil if source.empty?
           Protocol.object(Protocol.parse(source, "MCP HTTP response"), "MCP HTTP response")
+        end
+
+        def receive(message, request_id)
+          return unless message
+          raise ProtocolError, "invalid JSON-RPC version" unless message["jsonrpc"] == "2.0"
+          return message if !message.key?("method") && message["id"] == request_id
+          reply_to_server(message) if message["method"] && message.key?("id")
+          nil
+        end
+
+        def reply_to_server(message)
+          result = message["method"] == "ping" ? {} : nil
+          reply = {"jsonrpc" => "2.0", "id" => message["id"]}
+          if result
+            reply["result"] = result
+          else
+            reply["error"] = {"code" => -32_601, "message" => "Method not found"}
+          end
+          @client.post_json(reply, headers: request_headers)
         end
       end
     end

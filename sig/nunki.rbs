@@ -102,7 +102,7 @@ module Nunki
     class Client
       attr_reader endpoint: untyped
       def initialize: (endpoint: String, ?headers: Hash[String, String], ?open_timeout: Numeric, ?read_timeout: Numeric, ?retries: Integer, ?retry_base: Numeric, ?max_request_bytes: Integer, ?max_response_bytes: Integer) -> void
-      def post_json: (json payload, ?headers: Hash[String, String]) ?{ (SSE::Event) -> untyped } -> Result
+      def post_json: (json payload, ?headers: Hash[String, String]) ?{ (SSE::Event, Hash[String, String]) -> untyped } -> Result
       def delete: (?headers: Hash[String, String]) -> Result
       def cancel: () -> untyped
     end
