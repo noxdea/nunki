@@ -10,9 +10,13 @@ class HTTPTest < Minitest::Test
       attempts < 3 ? ["500 Error", {}, "retry"] : ["200 OK", {"Content-Type" => "application/json"}, '{"ok":true}']
     end
     with_server(handler) do |server|
-      result = Nunki::HTTP::Client.new(endpoint: server.url, retries: 2, retry_base: 0).post_json({test: true})
+      delays = []
+      client = Nunki::HTTP::Client.new(endpoint: server.url, retries: 2)
+      client.define_singleton_method(:wait_retry) { |seconds| delays << seconds }
+      result = client.post_json({test: true})
 
       assert_equal 3, attempts
+      assert_equal [0.25, 0.5], delays
       assert_equal '{"ok":true}', result.body
     end
   end
@@ -48,5 +52,10 @@ class HTTPTest < Minitest::Test
     assert_raises(Nunki::ProtocolError) { Nunki::HTTP::Client.new(endpoint: "file:///tmp/socket") }
     client = Nunki::HTTP::Client.new(endpoint: "http://127.0.0.1:1", max_request_bytes: 4)
     assert_raises(Nunki::ProtocolError) { client.post_json({value: "large"}) }
+
+    with_server(->(_) { ["200 OK", {}, "large"] }) do |server|
+      bounded = Nunki::HTTP::Client.new(endpoint: server.url, max_response_bytes: 4)
+      assert_raises(Nunki::ProtocolError) { bounded.post_json({}) }
+    end
   end
 end

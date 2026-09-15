@@ -17,4 +17,9 @@ class ContextTest < Minitest::Test
       Nunki.truncate([Nunki::Message.new(role: :assistant, content: [invalid])], max_tokens: 20)
     end
   end
+
+  def test_value_construction_is_consistent_on_supported_rubies
+    assert_raises(ArgumentError) { Nunki::Part.new(type: :text, text: "missing fields") }
+    assert_raises(ArgumentError) { text("ok").with(unknown: true) }
+  end
 end

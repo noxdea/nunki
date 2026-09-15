@@ -37,14 +37,28 @@ module Nunki
         members.each { |member| undef_method("#{member}=") }
 
         define_method(:initialize) do |*values, **keywords|
-          raise ArgumentError, "cannot mix positional and keyword arguments" if values.any? && keywords.any?
+          if keywords.empty?
+            raise ArgumentError, "wrong number of arguments" unless values.length == self.class.members.length
+            super(*values)
+          else
+            raise ArgumentError, "cannot mix positional and keyword arguments" unless values.empty?
 
-          values = self.class.members.map { |member| keywords.fetch(member) } if keywords.any?
-          super(*values)
+            missing = self.class.members - keywords.keys
+            unknown = keywords.keys - self.class.members
+            raise ArgumentError, "missing keyword: #{missing.first.inspect}" unless missing.empty?
+            raise ArgumentError, "unknown keyword: #{unknown.first.inspect}" unless unknown.empty?
+
+            super(*self.class.members.map { |member| keywords.fetch(member) })
+          end
           freeze
         end
 
-        define_method(:with) { |**changes| self.class.new(**to_h.merge(changes)) }
+        define_method(:with) do |**changes|
+          return self if changes.empty?
+          unknown = changes.keys - self.class.members
+          raise ArgumentError, "unknown keyword: #{unknown.first.inspect}" unless unknown.empty?
+          self.class.new(**to_h.merge(changes))
+        end
       end
     end
   end

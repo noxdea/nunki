@@ -27,6 +27,17 @@ class ProviderTest < Minitest::Test
       assert_equal "weather", response.message.content[1].tool_name
       assert_equal({"city" => "Tokyo"}, response.message.content[1].tool_input)
       assert_equal [12, 5], [response.usage.input_tokens, response.usage.output_tokens]
+
+      tool_result = Nunki::Part.new(type: :tool_result, text: "sunny", tool_name: nil,
+        tool_input: nil, tool_use_id: "call-1")
+      provider.complete([
+        nunki_message(:user, "weather"),
+        response.message,
+        Nunki::Message.new(role: :tool, content: [tool_result])
+      ])
+      follow_up = JSON.parse(server.requests.pop[:body])
+      assert_equal "call-1", follow_up.dig("messages", 2, "tool_call_id")
+      assert_equal "sunny", follow_up.dig("messages", 2, "content")
     end
   end
 
