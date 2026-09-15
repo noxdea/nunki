@@ -2,12 +2,7 @@
 
 module Nunki
   module SSE
-    Event = Struct.new(:event, :data, :id, :retry, keyword_init: true) do
-      def initialize(**values)
-        super
-        freeze
-      end
-    end
+    Event = Value.define(:event, :data, :id, :retry)
 
     class Parser
       DEFAULT_MAX_EVENT_BYTES = 1_048_576

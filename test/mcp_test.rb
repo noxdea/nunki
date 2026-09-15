@@ -31,7 +31,12 @@ class MCPTest < Minitest::Test
       result = mcp_result(message)
       headers = {"Content-Type" => "application/json"}
       headers["MCP-Session-Id"] = "session-1" if message["method"] == "initialize"
-      ["200 OK", headers, JSON.generate(jsonrpc: "2.0", id: message["id"], result: result)]
+      response = {jsonrpc: "2.0", id: message["id"], result: result}
+      if message["method"] == "tools/list"
+        ["200 OK", {"Content-Type" => "text/event-stream"}, sse(response)]
+      else
+        ["200 OK", headers, JSON.generate(response)]
+      end
     end
 
     with_server(handler) do |server|

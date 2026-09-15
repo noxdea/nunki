@@ -78,6 +78,9 @@ module Nunki
       attr_reader data: String
       attr_reader id: String?
       attr_reader retry: Integer?
+      def self.new: (String?, String, String?, Integer?) -> Event
+                  | (event: String?, data: String, id: String?, retry: Integer?) -> Event
+      def with: (?event: String?, ?data: String, ?id: String?, ?retry: Integer?) -> Event
     end
     class Parser
       def initialize: (?max_event_bytes: Integer) -> void
@@ -92,6 +95,9 @@ module Nunki
       attr_reader headers: Hash[String, String]
       attr_reader body: String
       attr_reader events: Array[SSE::Event]
+      def self.new: (Integer, Hash[String, String], String, Array[SSE::Event]) -> Result
+                  | (status: Integer, headers: Hash[String, String], body: String, events: Array[SSE::Event]) -> Result
+      def with: (?status: Integer, ?headers: Hash[String, String], ?body: String, ?events: Array[SSE::Event]) -> Result
     end
     class Client
       attr_reader endpoint: untyped

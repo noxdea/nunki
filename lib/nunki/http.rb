@@ -6,12 +6,7 @@ require "uri"
 
 module Nunki
   module HTTP
-    Result = Struct.new(:status, :headers, :body, :events, keyword_init: true) do
-      def initialize(**values)
-        super
-        freeze
-      end
-    end
+    Result = Value.define(:status, :headers, :body, :events)
 
     class Client
       DEFAULT_MAX_REQUEST_BYTES = 1_048_576
