@@ -12,7 +12,7 @@ class HTTPTest < Minitest::Test
     with_server(handler) do |server|
       delays = []
       client = Nunki::HTTP::Client.new(endpoint: server.url, retries: 2)
-      client.define_singleton_method(:wait_retry) { |seconds| delays << seconds }
+      client.define_singleton_method(:wait_retry) { |seconds, _epoch| delays << seconds }
       result = client.post_json({test: true})
 
       assert_equal 3, attempts
