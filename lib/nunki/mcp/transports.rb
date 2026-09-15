@@ -106,13 +106,19 @@ module Nunki
         def stop_process
           return unless @waiter
           return if @waiter.join(0.5)
-          Process.kill("TERM", @waiter.pid)
-          return if @waiter.join(0.5)
-          Process.kill("KILL", @waiter.pid)
-          @waiter.join(0.5)
+          ["TERM", "KILL"].each do |signal|
+            begin
+              signal_process(signal, @waiter.pid)
+            rescue Errno::EINVAL
+              next
+            end
+            return if @waiter.join(0.5)
+          end
         rescue Errno::ESRCH, Errno::ECHILD
           nil
         end
+
+        def signal_process(signal, pid) = Process.kill(signal, pid)
 
         def validate_command(command)
           raise ProtocolError, "command must be a non-empty array" unless command.is_a?(Array) && command.any?

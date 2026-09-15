@@ -121,6 +121,25 @@ class MCPTest < Minitest::Test
     client&.close
   end
 
+  def test_stdio_cleanup_falls_back_when_term_is_unsupported
+    transport = Nunki::MCP::Transports::Stdio.new(command: [RbConfig.ruby, "-e", "exit"])
+    waiter = Object.new
+    joins = 0
+    waiter.define_singleton_method(:pid) { 12_345 }
+    waiter.define_singleton_method(:join) { |_timeout| joins += 1; joins >= 2 }
+    transport.instance_variable_set(:@waiter, waiter)
+    signals = []
+    transport.define_singleton_method(:signal_process) do |signal, pid|
+      signals << [signal, pid]
+      raise Errno::EINVAL if signal == "TERM"
+    end
+
+    transport.send(:stop_process)
+
+    assert_equal [["TERM", 12_345], ["KILL", 12_345]], signals
+    assert_equal 2, joins
+  end
+
   private
 
   def mcp_result(message)
