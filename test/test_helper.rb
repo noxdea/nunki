@@ -32,13 +32,16 @@ module NunkiTestSupport
         @requests << request
         status, headers, body = @handler.call(request)
         body ||= ""
-        headers = {"Content-Length" => body.bytesize.to_s, "Connection" => "close"}.merge(headers)
+        base_headers = {"Connection" => "close"}
+        base_headers["Content-Length"] = body.bytesize.to_s unless body.respond_to?(:call)
+        headers = base_headers.merge(headers)
         socket.write("HTTP/1.1 #{status}\r\n")
         headers.each { |key, value| socket.write("#{key}: #{value}\r\n") }
-        socket.write("\r\n", body)
+        socket.write("\r\n")
+        body.respond_to?(:call) ? body.call(socket) : socket.write(body)
         socket.close
       end
-    rescue IOError, Errno::EBADF
+    rescue IOError, Errno::EBADF, Errno::EPIPE, Errno::ECONNRESET
       nil
     end
 

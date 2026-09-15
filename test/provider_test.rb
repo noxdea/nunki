@@ -76,6 +76,34 @@ class ProviderTest < Minitest::Test
     assert_raises(Nunki::ProtocolError) { provider.complete([nunki_message(:user, "hello")], max_tokens: 10) }
   end
 
+  def test_cancel_interrupts_an_active_stream
+    started = Queue.new
+    body = lambda do |socket|
+      socket.write(sse(choices: [{delta: {content: "first"}}]))
+      started << true
+      100.times do
+        sleep 0.02
+        socket.write(": keepalive\n\n")
+      end
+    end
+    handler = ->(_) { ["200 OK", {"Content-Type" => "text/event-stream"}, body] }
+
+    with_server(handler) do |server|
+      provider = Nunki::Provider.build(:local, endpoint: server.url, model: "model")
+      result = Queue.new
+      thread = Thread.new do
+        provider.complete([nunki_message(:user, "hello")])
+      rescue => error
+        result << error
+      end
+      started.pop
+      provider.cancel
+
+      assert thread.join(1), "cancel did not interrupt active response"
+      assert_instance_of Nunki::Cancelled, result.pop
+    end
+  end
+
   private
 
   def weather_tool
