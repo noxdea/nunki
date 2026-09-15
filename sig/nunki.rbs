@@ -1,0 +1,126 @@
+module Nunki
+  VERSION: String
+
+  type json = nil | bool | Integer | Float | String | Array[json] | Hash[String | Symbol, json]
+  type object = Hash[String | Symbol, json]
+
+  class Error < StandardError
+  end
+  class ProtocolError < Error
+  end
+  class Timeout < Error
+  end
+  class Cancelled < Error
+  end
+  class HTTPError < Error
+    attr_reader status: Integer
+    attr_reader body: String?
+    def initialize: (Integer status, ?String? body) -> void
+  end
+  class RateLimited < HTTPError
+    attr_reader retry_after: Float?
+    def initialize: (?String? body, ?retry_after: Float?) -> void
+  end
+
+  class Message
+    attr_reader role: String | Symbol
+    attr_reader content: Array[Part]
+    def self.new: (String | Symbol, Array[Part]) -> Message
+                | (role: String | Symbol, content: Array[Part]) -> Message
+    def with: (?role: String | Symbol, ?content: Array[Part]) -> Message
+  end
+  class Part
+    attr_reader type: String | Symbol
+    attr_reader text: String?
+    attr_reader tool_name: String?
+    attr_reader tool_input: object?
+    attr_reader tool_use_id: String?
+    def self.new: (String | Symbol, String?, String?, object?, String?) -> Part
+                | (type: String | Symbol, text: String?, tool_name: String?, tool_input: object?, tool_use_id: String?) -> Part
+    def with: (?type: String | Symbol, ?text: String?, ?tool_name: String?, ?tool_input: object?, ?tool_use_id: String?) -> Part
+  end
+  class Tool
+    attr_reader name: String
+    attr_reader description: String
+    attr_reader input_schema: object
+    def self.new: (String, String, object) -> Tool
+                | (name: String, description: String, input_schema: object) -> Tool
+    def with: (?name: String, ?description: String, ?input_schema: object) -> Tool
+  end
+  class Usage
+    attr_reader input_tokens: Integer
+    attr_reader output_tokens: Integer
+    def self.new: (Integer, Integer) -> Usage
+                | (input_tokens: Integer, output_tokens: Integer) -> Usage
+    def with: (?input_tokens: Integer, ?output_tokens: Integer) -> Usage
+  end
+  class Response
+    attr_reader message: Message
+    attr_reader usage: Usage
+    attr_reader finish_reason: String?
+    def self.new: (Message, Usage, String?) -> Response
+                | (message: Message, usage: Usage, finish_reason: String?) -> Response
+    def with: (?message: Message, ?usage: Usage, ?finish_reason: String?) -> Response
+  end
+
+  def self.estimate_tokens: (Message | Part | Array[Message | Part] | String value) -> Integer
+  def self.truncate: (Array[Message] messages, max_tokens: Integer) -> Array[Message]
+
+  class Provider
+    def self.build: (String | Symbol kind, endpoint: String, ?api_key: String?, model: String, **untyped options) -> Provider
+    def complete: (Array[Message] messages, ?tools: Array[Tool], ?system: String?, ?max_tokens: Integer) ?{ (Part) -> untyped } -> untyped
+    def cancel: () -> untyped
+  end
+
+  module SSE
+    class Event
+      attr_reader event: String?
+      attr_reader data: String
+      attr_reader id: String?
+      attr_reader retry: Integer?
+    end
+    class Parser
+      def initialize: (?max_event_bytes: Integer) -> void
+      def feed: (String chunk) -> Array[Event]
+      def finish: () -> Array[Event]
+    end
+  end
+
+  module HTTP
+    class Result
+      attr_reader status: Integer
+      attr_reader headers: Hash[String, String]
+      attr_reader body: String
+      attr_reader events: Array[SSE::Event]
+    end
+    class Client
+      attr_reader endpoint: untyped
+      def initialize: (endpoint: String, ?headers: Hash[String, String], ?open_timeout: Numeric, ?read_timeout: Numeric, ?retries: Integer, ?retry_base: Numeric, ?max_request_bytes: Integer, ?max_response_bytes: Integer) -> void
+      def post_json: (json payload, ?headers: Hash[String, String]) ?{ (SSE::Event) -> untyped } -> Result
+      def delete: (?headers: Hash[String, String]) -> Result
+      def cancel: () -> untyped
+    end
+  end
+
+  module MCP
+    PROTOCOL_VERSION: String
+    class RemoteError < Error
+      attr_reader code: Integer
+      attr_reader data: json
+    end
+    class Client
+      attr_reader capabilities: object
+      attr_reader server_info: object
+      def self.stdio: (command: Array[String], ?env: Hash[String, String], ?timeout: Numeric, ?dispatch: untyped) -> Client
+      def self.http: (url: String, ?headers: Hash[String, String], ?timeout: Numeric, ?dispatch: untyped, **untyped options) -> Client
+      def start: () -> untyped
+      def tools: () -> untyped
+      def call_tool: (String name, object arguments) -> untyped
+      def resources: () -> untyped
+      def read_resource: (String uri) -> untyped
+      def prompts: () -> untyped
+      def get_prompt: (String name, ?object arguments) -> untyped
+      def close: () -> untyped
+    end
+  end
+end
