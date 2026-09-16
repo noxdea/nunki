@@ -1,8 +1,39 @@
-# Nunki
+<h1 align="center">Nunki</h1>
+
+<p align="center">
+  <strong>Provider-neutral LLM streaming and MCP clients for Ruby</strong>
+</p>
+
+<p align="center">
+  <a href="https://rubygems.org/gems/nunki"><img src="https://img.shields.io/gem/v/nunki.svg?colorB=319e8c" alt="Gem Version"></a>
+  <a href="https://rubygems.org/gems/nunki"><img src="https://img.shields.io/gem/dt/nunki.svg" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/ruby-%3E%3D%203.1-ruby.svg" alt="Ruby Version">
+  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#llm-providers">LLM Providers</a> ·
+  <a href="#mcp">MCP</a> ·
+  <a href="#limits-and-security">Security</a>
+</p>
+
+---
 
 Nunki is a pure Ruby, provider-neutral client for streaming LLM APIs and the
 Model Context Protocol (MCP). It supplies protocol and transport behavior while
 leaving prompts, UI, context selection, and edits to the host application.
+
+## Features
+
+- Streaming OpenAI-compatible and Anthropic provider clients
+- Structured tool calls, usage data, cancellation, and bounded retries
+- MCP 2025-11-25 clients over stdio and Streamable HTTP
+- Tools, resources, prompts, pagination, and request timeouts
+- Provider-neutral messages plus token estimation and context truncation
+- Explicit endpoints, limits, and credential handling
 
 ## Installation
 
@@ -10,7 +41,9 @@ leaving prompts, UI, context selection, and edits to the host application.
 bundle add nunki
 ```
 
-## LLM providers
+Nunki supports Ruby 3.1 and later.
+
+## Quick Start
 
 The endpoint is always explicit. Pass the full completion/messages URL supplied
 by your service configuration.
@@ -35,6 +68,8 @@ response = provider.complete([message]) do |part|
   print part.text if part.type == :text
 end
 ```
+
+## LLM Providers
 
 Supported kinds are `:openai`, `:openai_compatible`, `:local`, and
 `:anthropic`. The OpenAI-compatible local kind does not add an authorization
