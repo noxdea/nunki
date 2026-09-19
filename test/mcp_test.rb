@@ -110,7 +110,7 @@ class MCPTest < Minitest::Test
 
   def test_stdio_request_timeout_and_cleanup
     command = [RbConfig.ruby, File.expand_path("support/fake_mcp_server.rb", __dir__)]
-    client = Nunki::MCP::Client.stdio(command: command, env: {"NUNKI_FAKE_DELAY" => "2"}, timeout: 0.5)
+    client = Nunki::MCP::Client.stdio(command: command, env: {"NUNKI_FAKE_DELAY" => "5"}, timeout: 2)
     client.start
 
     assert_raises(Nunki::Timeout) { client.tools }
