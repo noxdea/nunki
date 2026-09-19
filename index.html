@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060a13">
+  <meta name="description" content="Nunki provides provider-neutral LLM streaming and MCP clients for Ruby.">
+  <title>Nunki — LLM streaming and MCP clients for Ruby</title>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body style="--accent:#78d4f2">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#"><span class="star-mark"></span>Nunki</a>
+    <nav aria-label="Primary navigation"><a href="#features">Capabilities</a><a href="#install">Install</a><a href="https://github.com/noxdea/nunki">GitHub</a></nav>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div>
+        <p class="constellation">σ Sagittarii · model protocols</p>
+        <h1>Stream on your terms.</h1>
+        <p class="lede">Provider-neutral LLM streaming and Model Context Protocol clients for Ruby, with explicit endpoints, limits, and credentials.</p>
+        <div class="actions"><a class="button primary" href="#install">Install Nunki</a><a class="button" href="https://github.com/noxdea/nunki">View source</a></div>
+        <ul class="facts"><li><strong>LLM + MCP</strong></li><li>Ruby ≥ 3.1</li><li>MIT licensed</li></ul>
+      </div>
+      <div class="instrument" aria-label="Streaming model and tool messages example">
+        <div class="instrument-head"><span>provider / stream</span><span class="signal">receiving</span></div>
+        <div class="instrument-body">
+          <div class="stream">
+            <div class="message"><small>user</small>Explain the selected method.</div>
+            <div class="message"><small>assistant · tool use</small>lookup({ query: "Ruby Data.define" })</div>
+            <div class="message"><small>MCP · tool result</small>1 resource returned in 184 ms</div>
+            <div class="message"><small>assistant · text</small>This immutable value object stores…</div>
+          </div>
+          <p class="command" style="margin-top:1.5rem">tokens 326 / 8,192 · retry 0 · endpoint explicit</p>
+        </div>
+      </div>
+    </section>
+    <section class="features" id="features">
+      <div class="section-heading"><h2>Protocols, not policy.</h2><p>Nunki handles transport and protocol behavior. Your host still chooses prompts, context, tools, edits, and where credentials belong.</p></div>
+      <div class="feature-grid">
+        <article><h3>Provider-neutral</h3><p>Stream OpenAI-compatible and Anthropic APIs through common messages and structured parts.</p></article>
+        <article><h3>MCP complete</h3><p>Use tools, resources, prompts, and pagination over stdio or Streamable HTTP.</p></article>
+        <article><h3>Explicit limits</h3><p>Bound requests, responses, retries, timeouts, and context before crossing a network boundary.</p></article>
+      </div>
+    </section>
+    <section class="install" id="install">
+      <div class="install-copy"><h2>Open the stream.</h2><p>Choose a provider and supply the full endpoint from your own configuration.</p></div>
+      <div class="terminal"><div class="terminal-bar">Ruby</div><pre><span class="prompt">$</span> bundle add nunki
+
+provider = Nunki::Provider.build(
+  :openai,
+  endpoint: ENV.fetch("LLM_ENDPOINT"),
+  api_key: ENV.fetch("LLM_API_KEY"),
+  model: "configured-model"
+)</pre></div>
+    </section>
+  </main>
+  <footer><p>Nunki · Pure Ruby · MIT</p><div><a href="https://rubygems.org/gems/nunki">RubyGems</a><a href="https://github.com/noxdea/nunki">GitHub</a></div></footer>
+</body>
+</html>
